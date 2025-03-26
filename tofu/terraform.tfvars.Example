@@ -4,5 +4,8 @@ proxmox = {
   endpoint     = "https://proxmox:8006"
   insecure     = false
   username     = "root"
-  api_token    = "root@pam!name=token"
 }
+
+proxmox_api_token = "root@pam!token-id=your-token-uuid"
+
+# All other configurations should be in auto.tfvars files
