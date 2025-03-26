@@ -20,6 +20,7 @@ variable "cluster" {
     vip                          = optional(string)
     gateway                      = string
     subnet_mask                  = optional(string, "24")
+    dns_domain                   = optional(string, "kube.pc-tips.se")
     talos_machine_config_version = optional(string)
     proxmox_cluster             = string
     kubernetes_version          = string

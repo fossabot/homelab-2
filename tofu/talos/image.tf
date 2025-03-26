@@ -8,10 +8,44 @@ locals {
   update_schematic_id = jsondecode(data.http.updated_schematic_id.response_body)["id"]
   image_id = "${local.schematic_id}_${local.version}"
   update_image_id = "${local.update_schematic_id}_${local.update_version}"
-  # Comment the above 2 lines and un-comment the below 2 lines to use the provider schematic ID instead of the HTTP one
-  # ref - https://github.com/vehagn/homelab/issues/106
-  # image_id = "${talos_image_factory_schematic.this.id}_${local.version}"
-  # update_image_id = "${talos_image_factory_schematic.updated.id}_${local.update_version}"
+
+  # Node configurations with version info - per node
+  node_configurations = {
+    for k, v in var.nodes :
+    k => {
+      host_node = v.host_node
+      datastore_id = lookup(v, "datastore_id", var.image.proxmox_datastore)
+      version = v.update == true ? local.update_version : local.version
+      schematic_id = v.update == true ? local.update_schematic_id : local.schematic_id
+      image_id = v.update == true ? local.update_image_id : local.image_id
+    }
+  }
+
+  # Create a properly deduplicated map for downloads
+  # Key includes datastore_id to handle different storage pools correctly
+  download_entries = [
+    for k, v in local.node_configurations : {
+      key = "${v.host_node}_${v.datastore_id}_${v.image_id}"
+      value = {
+        host_node = v.host_node
+        datastore_id = v.datastore_id
+        version = v.version
+        schematic_id = v.schematic_id
+        image_id = v.image_id
+      }
+    }
+  ]
+
+  # Use distinct to eliminate duplicate downloads
+  unique_downloads = {
+    for entry in distinct(local.download_entries) : entry.key => entry.value
+  }
+
+  # Create a lookup map to find the right download for each VM
+  node_to_download_key = {
+    for k, v in local.node_configurations :
+    k => "${v.host_node}_${v.datastore_id}_${v.image_id}"
+  }
 }
 
 data "http" "schematic_id" {
@@ -26,37 +60,16 @@ data "http" "updated_schematic_id" {
   request_body = local.update_schematic
 }
 
-resource "talos_image_factory_schematic" "this" {
-  schematic = local.schematic
-}
-
-resource "talos_image_factory_schematic" "updated" {
-  schematic = local.update_schematic
-}
-
+# Download Talos images - one per unique combination of host_node, datastore_id, and image_id
 resource "proxmox_virtual_environment_download_file" "this" {
-  for_each = {
-    for k, v in var.nodes :
-    "${k}_${v.host_node}_${v.update == true ? local.update_image_id : local.image_id}" => local.shared_download
-  }
+  for_each = local.unique_downloads
 
-  node_name    = local.shared_download.host_node
+  node_name    = each.value.host_node
   content_type = "iso"
-  datastore_id = var.image.proxmox_datastore
-
-  file_name               = "talos-${local.shared_download.schematic}-${local.shared_download.version}-${var.image.platform}-${var.image.arch}.img"
-  url                     = "${var.image.factory_url}/image/${local.shared_download.schematic}/${local.shared_download.version}/${var.image.platform}-${var.image.arch}.raw.gz"
-  decompression_algorithm = "gz"
-  overwrite               = false
-}
-
-
-locals {
-  shared_download = {
-    host_node = values(var.nodes)[0].host_node
-    version   = values(var.nodes)[0].update == true ? local.update_version : local.version
-    schematic = values(var.nodes)[0].update == true ? talos_image_factory_schematic.updated.id : talos_image_factory_schematic.this.id
-  }
+  datastore_id = each.value.datastore_id
+  file_name    = "talos-${each.value.schematic_id}-${each.value.version}-${var.image.platform}-${var.image.arch}.iso"
+  url          = "${var.image.factory_url}/image/${each.value.schematic_id}/${each.value.version}/${var.image.platform}-${var.image.arch}.iso"
+  overwrite    = false
 }
 
 

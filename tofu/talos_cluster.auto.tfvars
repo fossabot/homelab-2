@@ -8,11 +8,11 @@ talos_cluster_config = {
   proxmox_cluster              = "host3"
   kubernetes_version           = "1.32.3"
   cilium = {
-    bootstrap_manifest_path = "./inline-manifests/cilium-install.yaml"
+    bootstrap_manifest_path = "talos/inline-manifests/cilium-install.yaml"
     values_file_path        = "../k8s/infrastructure/network/cilium/values.yaml"
   }
   coredns = {
-    bootstrap_manifest_path = "./inline-manifests/coredns-install.yaml"
+    bootstrap_manifest_path = "talos/inline-manifests/coredns-install.yaml"
     values_file_path        = "../k8s/infrastructure/network/coredns/values.yaml"
   }
   extra_manifests = [

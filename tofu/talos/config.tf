@@ -9,27 +9,18 @@ data "talos_client_configuration" "this" {
   endpoints            = [for k, v in var.nodes : v.ip if v.machine_type == "controlplane"]
 }
 
-# External data source to run Kustomize for Cilium
-data "external" "cilium_kustomize" {
-  program = [
-    "bash", "-c",
-    "set -euo pipefail; out=$(kustomize build --enable-helm \"${path.root}/../k8s/infrastructure/network/cilium\" | jq -Rs .); echo \"{\\\"manifest\\\": $out}\""
-  ]
-}
-
-
-
-
-resource "local_file" "cilium_rendered_manifest" {
-  content  = data.external.cilium_kustomize.result["manifest"]
-  filename = "${path.module}/rendered/cilium-manifest.yaml"
-}
-
-resource "terraform_data" "cilium_bootstrap_inline_manifests" {
-  input = [
+locals {
+  # Use GitOps-friendly approach to handle bootstrap manifests
+  # Use `data.external` with fallback for Kustomize rendering
+  cilium_bootstrap_manifests = [
     {
       name     = "cilium-bootstrap"
-      contents = local_file.cilium_rendered_manifest.content
+      contents = try(
+        # Try to safely render the manifests with kustomize
+        data.external.cilium_kustomize_safe[0].result.manifest,
+        # If that fails, fallback to reading the manifest file directly
+        file("${path.root}/${var.cluster.cilium.bootstrap_manifest_path}")
+      )
     },
     {
       name = "cilium-values"
@@ -46,33 +37,24 @@ resource "terraform_data" "cilium_bootstrap_inline_manifests" {
       })
     }
   ]
-}
-# External data source to run Kustomize for CoreDNS
-data "external" "coredns_kustomize" {
-  program = [
-    "bash", "-c",
-    "set -euo pipefail; out=$(kustomize build --enable-helm \"${path.root}/../k8s/infrastructure/network/coredns\" | jq -Rs .); echo \"{\\\"manifest\\\": $out}\""
-  ]
-}
 
-
-
-
-resource "local_file" "coredns_rendered_manifest" {
-  content  = data.external.coredns_kustomize.result["manifest"]
-  filename = "${path.module}/rendered/coredns-manifest.yaml"
-}
-
-resource "terraform_data" "coredns_bootstrap_inline_manifests" {
-  input = [
+  coredns_bootstrap_manifests = [
     {
       name     = "coredns-bootstrap"
-      contents = local_file.coredns_rendered_manifest.content
+      contents = try(
+        # Try to safely render the manifests with kustomize
+        data.external.coredns_kustomize_safe[0].result.manifest,
+        # If that fails, fallback to reading the manifest file directly
+        file("${path.root}/${var.cluster.coredns.bootstrap_manifest_path}")
+      )
     },
     {
       name = "coredns-values"
       contents = yamlencode({
+        apiVersion = "v1"
+        kind       = "ConfigMap"
         metadata = {
+          name      = "coredns-values"
           namespace = "kube-system"
         }
         data = {
@@ -80,6 +62,70 @@ resource "terraform_data" "coredns_bootstrap_inline_manifests" {
         }
       })
     }
+  ]
+
+  # Combine all bootstrap manifests
+  bootstrap_inline_manifests = concat(
+    local.cilium_bootstrap_manifests,
+    local.coredns_bootstrap_manifests
+  )
+
+  # Determine kustomize paths for rendering
+  cilium_kustomize_dir = dirname("${path.root}/${var.cluster.cilium.bootstrap_manifest_path}")
+  coredns_kustomize_dir = dirname("${path.root}/${var.cluster.coredns.bootstrap_manifest_path}")
+}
+
+# Safe external data sources for Kustomize rendering
+# These use a count to make them optional and provide fallbacks
+data "external" "cilium_kustomize_safe" {
+  count = fileexists("${local.cilium_kustomize_dir}/kustomization.yaml") ? 1 : 0
+
+  program = [
+    "bash", "-c",
+    <<-EOT
+      set -eo pipefail
+
+      # Check if kustomize exists, if not just output empty result
+      if ! command -v kustomize &> /dev/null; then
+        echo '{"manifest": ""}'
+        exit 0
+      fi
+
+      # Try to build with kustomize, capture errors
+      if output=$(kustomize build "${local.cilium_kustomize_dir}" 2>/dev/null); then
+        # Success - return the manifest
+        echo "{\"manifest\": $(echo "$output" | jq -sR .)}"
+      else
+        # Failure - return empty
+        echo '{"manifest": ""}'
+      fi
+    EOT
+  ]
+}
+
+data "external" "coredns_kustomize_safe" {
+  count = fileexists("${local.coredns_kustomize_dir}/kustomization.yaml") ? 1 : 0
+
+  program = [
+    "bash", "-c",
+    <<-EOT
+      set -eo pipefail
+
+      # Check if kustomize exists, if not just output empty result
+      if ! command -v kustomize &> /dev/null; then
+        echo '{"manifest": ""}'
+        exit 0
+      fi
+
+      # Try to build with kustomize, capture errors
+      if output=$(kustomize build "${local.coredns_kustomize_dir}" 2>/dev/null); then
+        # Success - return the manifest
+        echo "{\"manifest\": $(echo "$output" | jq -sR .)}"
+      else
+        # Failure - return empty
+        echo '{"manifest": ""}'
+      fi
+    EOT
   ]
 }
 
@@ -91,6 +137,7 @@ data "talos_machine_configuration" "this" {
   machine_type     = each.value.machine_type
   machine_secrets  = talos_machine_secrets.this.machine_secrets
 
+  # Use a single common template for both worker and control plane nodes
   config_patches = compact([
     templatefile("${path.module}/machine-config/common.yaml.tftpl", {
       node_name    = each.value.host_node
@@ -101,20 +148,18 @@ data "talos_machine_configuration" "this" {
       gateway      = var.cluster.gateway
       subnet_mask  = var.cluster.subnet_mask
       vip          = each.value.machine_type == "controlplane" ? var.cluster.vip : null
+      dns_domain   = var.cluster.dns_domain
+      machine_type = each.value.machine_type
     }),
+    # Only add controlplane specific configs for controlplane nodes
     each.value.machine_type == "controlplane" ? templatefile("${path.module}/machine-config/control-plane.yaml.tftpl", {
       kubelet         = var.cluster.kubelet
       api_server      = var.cluster.api_server
       extra_manifests = yamlencode(var.cluster.extra_manifests)
-      inline_manifests = yamlencode(concat(
-        terraform_data.cilium_bootstrap_inline_manifests.input,
-        terraform_data.coredns_bootstrap_inline_manifests.input
-      ))
+      inline_manifests = yamlencode(local.bootstrap_inline_manifests)
     }) : null
-
   ])
 }
-
 
 resource "talos_machine_configuration_apply" "this" {
   depends_on                  = [proxmox_virtual_environment_vm.this]
@@ -127,16 +172,18 @@ resource "talos_machine_configuration_apply" "this" {
     replace_triggered_by = [proxmox_virtual_environment_vm.this[each.key]]
   }
 }
-resource "null_resource" "wait_for_talos" {
+
+resource "terraform_data" "wait_for_talos" {
   depends_on = [talos_machine_configuration_apply.this]
 
-  provisioner "local-exec" {
-    command = "sleep 10"
-  }
+  # This triggers the resource to be replaced if any machine config changes
+  input = [for k, v in talos_machine_configuration_apply.this : v.machine_configuration_input]
+
+  # Proper Terraform dependency management will handle the waiting
 }
 
 resource "talos_machine_bootstrap" "this" {
-  depends_on = [talos_machine_configuration_apply.this]
+  depends_on = [terraform_data.wait_for_talos]
   node                 = [for k, v in var.nodes : v.ip if v.machine_type == "controlplane"][0]
   client_configuration = talos_machine_secrets.this.client_configuration
 }

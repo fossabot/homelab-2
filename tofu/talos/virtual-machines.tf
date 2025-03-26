@@ -32,21 +32,38 @@ resource "proxmox_virtual_environment_vm" "this" {
     mac_address = each.value.mac_address
   }
 
+  # Primary disk with proper size
   disk {
-    datastore_id = each.value.datastore_id
-    file_id      = proxmox_virtual_environment_download_file.this["${each.key}_${each.value.host_node}_${each.value.update == true ? local.update_image_id : local.image_id}"].id
-    interface    = "virtio0"
+    datastore_id = lookup(each.value, "datastore_id", var.image.proxmox_datastore)
+    interface    = "scsi0"
     size         = 32
+    file_format  = "raw"
   }
 
-  boot_order = ["scsi0"]
+  # Add additional disks if specified
+  dynamic "disk" {
+    for_each = lookup(each.value, "disks", {})
+    content {
+      datastore_id = lookup(each.value, "datastore_id", var.image.proxmox_datastore)
+      interface    = "scsi${disk.key + 1}" # +1 because scsi0 is the boot disk
+      size         = disk.value
+      file_format  = "raw"
+    }
+  }
+
+  # CD-ROM with Talos ISO
+  cdrom {
+    file_id = proxmox_virtual_environment_download_file.this[local.node_to_download_key[each.key]].id
+  }
+
+  boot_order = ["cdrom", "scsi0"]
 
   operating_system {
     type = "l26" # Linux Kernel 2.6 - 6.X.
   }
 
   initialization {
-    datastore_id = each.value.datastore_id
+    datastore_id = lookup(each.value, "datastore_id", var.image.proxmox_datastore)
 
     # Optional DNS Block.  Update Nodes with a list value to use.
     dynamic "dns" {
@@ -65,7 +82,7 @@ resource "proxmox_virtual_environment_vm" "this" {
   }
 
   dynamic "hostpci" {
-    for_each = each.value.igpu ? [1] : []
+    for_each = lookup(each.value, "igpu", false) ? [1] : []
     content {
       # Passthrough iGPU
       device  = "hostpci0"
