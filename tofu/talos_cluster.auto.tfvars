@@ -19,7 +19,7 @@ talos_cluster_config = {
     "https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml",
     "https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.2.1/config/crd/experimental/gateway.networking.k8s.io_tlsroutes.yaml"
   ]
-  kubelet = <<-EOT
+    kubelet = <<-EOT
     clusterDNS:
       - 10.96.0.10
     extraMounts:
@@ -30,15 +30,15 @@ talos_cluster_config = {
           - bind
           - rshared
           - rw
-    extraArgs:
+    extraArgs: {}
   EOT
   kernel = <<-EOT
     modules:
       - name: nvme_tcp
       - name: vfio_pci
   EOT
-  api_server = <<-EOT
-    extraArgs:
+    api_server = <<-EOT
+    extraArgs: {}
   EOT
   clusterName = "kube.pc-tips.se"
   network = {

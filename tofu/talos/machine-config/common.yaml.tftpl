@@ -12,6 +12,10 @@ machine:
         routes:
           - network: 0.0.0.0/0
             gateway: ${gateway}
+%{ if vip != null }
+        vip:
+          ip: ${vip}
+%{ endif }
         dhcp: false
   sysctls:
     fs.inotify.max_user_watches: 1048576   # Watchdog
