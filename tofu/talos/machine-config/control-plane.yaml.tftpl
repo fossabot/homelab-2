@@ -5,9 +5,11 @@ cluster:
   allowSchedulingOnControlPlanes: false
   apiServer:
     ${indent(4, api_server)}
+  clusterName: kube
   network:
     cni:
       name: none
+    dnsDomain: kube.pc-tips.se
   proxy:
     disabled: true
   discovery:

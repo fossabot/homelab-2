@@ -12,7 +12,7 @@ machine:
         routes:
           - network: 0.0.0.0/0
             gateway: ${gateway}
-%{ if vip != null }
+%{ if machine_type == "controlplane" && vip != null }
         vip:
           ip: ${vip}
 %{ endif }
