@@ -26,6 +26,7 @@ variable "talos_image" {
     arch = optional(string, "amd64")
     platform = optional(string, "nocloud")
     proxmox_datastore = optional(string, "local")
+    zfs_datastores = optional(list(string), [])
   })
 }
 

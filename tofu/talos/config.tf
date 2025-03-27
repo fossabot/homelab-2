@@ -17,7 +17,7 @@ locals {
       name     = "cilium-bootstrap"
       contents = try(
         # Try to safely render the manifests with kustomize
-        data.external.cilium_kustomize_safe[0].result.manifest,
+        data.external.validated_cilium_kustomize.result.status == "success" ? data.external.validated_cilium_kustomize.result.manifest : null,
         # If that fails, fallback to reading the manifest file directly
         file("${path.root}/${var.cluster.cilium.bootstrap_manifest_path}")
       )
@@ -43,7 +43,7 @@ locals {
       name     = "coredns-bootstrap"
       contents = try(
         # Try to safely render the manifests with kustomize
-        data.external.coredns_kustomize_safe[0].result.manifest,
+        data.external.validated_coredns_kustomize.result.status == "success" ? data.external.validated_coredns_kustomize.result.manifest : null,
         # If that fails, fallback to reading the manifest file directly
         file("${path.root}/${var.cluster.coredns.bootstrap_manifest_path}")
       )
