@@ -1,0 +1,217 @@
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (normally determined from merged PR)'
+        required: false
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Get release version from PR
+        id: get_version
+        if: github.event_name == 'pull_request' && github.event.pull_request.merged == true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prTitle = context.payload.pull_request.title;
+            const versionMatch = prTitle.match(/Release (v\d+\.\d+\.\d+)/);
+
+            if (versionMatch && versionMatch[1]) {
+              const version = versionMatch[1];
+              console.log(`Extracted version from PR title: ${version}`);
+              return version;
+            } else {
+              console.log('Could not extract version from PR title');
+              return '';
+            }
+
+      - name: Set version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ github.event.inputs.version }}" ]]; then
+            # Use manually specified version from workflow dispatch
+            echo "value=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event_name }}" == "pull_request" && -n "${{ steps.get_version.outputs.result }}" ]]; then
+            # Use version from PR title
+            echo "value=${{ steps.get_version.outputs.result }}" >> $GITHUB_OUTPUT
+          else
+            echo "No valid version found. Exiting."
+            exit 1
+          fi
+
+      - name: Extract commits
+        id: extract_commits
+        run: |
+          VERSION="${{ steps.version.outputs.value }}"
+          PREVIOUS_TAG="${{ steps.prev_tag.outputs.value }}"
+
+          if [[ -z "$PREVIOUS_TAG" ]]; then
+            # If there's no previous tag, get all commits
+            COMMITS=$(git log --pretty=format:"- %s (%h)" $VERSION)
+          else
+            # Get commits between tags
+            COMMITS=$(git log --pretty=format:"- %s (%h)" $PREVIOUS_TAG..$VERSION)
+          fi
+
+          # Limit to 50 most recent commits to avoid token limits
+          echo "$COMMITS" | head -50 > commits.txt
+
+      - name: Generate LLM Summary
+        id: llm_summary
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          # Read the commits using heredoc to safely handle special characters
+          cat > prompt.txt <<EOF
+            You are an expert developer summarizing changes for a release. Here are the recent commits:
+
+            $(cat commits.txt)
+
+            Please provide a concise, user-friendly summary of these changes. Focus on features, improvements, bug fixes, and breaking changes. Format the summary in Markdown with appropriate sections.
+            EOF
+
+          # Call OpenAI API
+          RESPONSE=$(curl -s https://api.openai.com/v1/chat/completions \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $OPENAI_API_KEY" \
+            -d "{
+              \"model\": \"gpt-4\",
+              \"messages\": [{\"role\": \"user\", \"content\": $(cat prompt.txt | jq -Rs .)}],
+              \"temperature\": 0.7,
+              \"max_tokens\": 500
+            }")
+
+          # Extract the summary from the response
+          SUMMARY=$(echo $RESPONSE | jq -r '.choices[0].message.content')
+
+          # Save summary to file and output
+          echo "$SUMMARY" > summary.md
+          echo "summary<<EOF" >> $GITHUB_OUTPUT
+          echo "$SUMMARY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const tag = '${{ steps.version.outputs.value }}';
+
+            // Create release with auto-generated notes
+            const release = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: tag,
+              name: `Release ${tag}`,
+              body: '',
+              draft: false,
+              prerelease: false,
+              generate_release_notes: true
+            });
+
+            // Wait a moment for native notes to populate
+            await new Promise(r => setTimeout(r, 2000));
+
+            // Fetch updated release with generated notes
+            const release_data = await github.rest.repos.getRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: release.data.id
+            });
+
+            // Read LLM summary
+            const summary = fs.readFileSync('summary.md', 'utf8');
+
+            // Update release with both auto-generated notes and LLM summary
+            await github.rest.repos.updateRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: release.data.id,
+              body: (release_data.data.body || '') + '\n\n## LLM Generated Summary\n\n' + summary
+            });
+
+      - name: Update CHANGELOG.md
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const tag = '${{ steps.version.outputs.value }}';
+            const date = new Date().toISOString().split('T')[0];
+
+            // Get the release content again to ensure we have the latest
+            const release = await github.rest.repos.getRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: tag
+            });
+
+            const nativeNotes = release.data.body.split('\n\n## LLM Generated Summary')[0] || '';
+            const summary = fs.readFileSync('summary.md', 'utf8');
+            const newEntry = `# ${tag} (${date})\n\n${nativeNotes}\n\n## LLM Generated Summary\n\n${summary}\n\n`;
+
+            try {
+              // Try to fetch existing changelog
+              const { data: content } = await github.rest.repos.getContent({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                path: 'CHANGELOG.md'
+              });
+
+              const buff = Buffer.from(content.content, 'base64');
+              let changelog = buff.toString('utf8');
+
+              // Add new release on top (after the title if it exists)
+              let newContent;
+              if (changelog.toLowerCase().startsWith('# changelog')) {
+                const parts = changelog.split('\n');
+                newContent = parts[0] + '\n\n' + newEntry + parts.slice(1).join('\n');
+              } else {
+                newContent = '# CHANGELOG\n\n' + newEntry + changelog;
+              }
+
+              // Update the file
+              await github.rest.repos.createOrUpdateFileContents({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                path: 'CHANGELOG.md',
+                message: `Update CHANGELOG for ${tag}`,
+                content: Buffer.from(newContent).toString('base64'),
+                sha: content.sha
+              });
+            } catch (e) {
+              // If CHANGELOG.md doesn't exist, create it
+              if (e.status === 404) {
+                const newContent = `# CHANGELOG\n\n${newEntry}`;
+
+                await github.rest.repos.createOrUpdateFileContents({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  path: 'CHANGELOG.md',
+                  message: `Create CHANGELOG for ${tag}`,
+                  content: Buffer.from(newContent).toString('base64')
+                });
+              } else {
+                throw e;
+              }
+            }

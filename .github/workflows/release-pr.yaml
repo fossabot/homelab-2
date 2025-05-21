@@ -1,0 +1,185 @@
+name: Maintain Release PR
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to prepare (leave empty to auto-detect)'
+        required: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  maintain-release-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Get latest version
+        id: get_version
+        run: |
+          # Get latest version from tags
+          LATEST_VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "Latest version: $LATEST_VERSION"
+
+          # Parse the version number
+          VERSION_REGEX="v([0-9]+)\.([0-9]+)\.([0-9]+)"
+          if [[ $LATEST_VERSION =~ $VERSION_REGEX ]]; then
+            MAJOR="${BASH_REMATCH[1]}"
+            MINOR="${BASH_REMATCH[2]}"
+            PATCH="${BASH_REMATCH[3]}"
+
+            # Check for semver indicators in commit messages
+            if git log --format=%B $(git describe --tags --abbrev=0)..HEAD | grep -q "BREAKING CHANGE:"; then
+              # Major version bump
+              NEXT_MAJOR=$((MAJOR + 1))
+              NEXT_VERSION="v$NEXT_MAJOR.0.0"
+            elif git log --format=%B $(git describe --tags --abbrev=0)..HEAD | grep -qE "^feat(\([^)]*\))?:"; then
+              # Minor version bump
+              NEXT_MINOR=$((MINOR + 1))
+              NEXT_VERSION="v$MAJOR.$NEXT_MINOR.0"
+            else
+              # Patch version bump
+              NEXT_PATCH=$((PATCH + 1))
+              NEXT_VERSION="v$MAJOR.$MINOR.$NEXT_PATCH"
+            fi
+
+            echo "current_version=$LATEST_VERSION" >> $GITHUB_OUTPUT
+            echo "next_version=$NEXT_VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "Failed to parse version number: $LATEST_VERSION"
+            echo "next_version=v0.1.0" >> $GITHUB_OUTPUT
+            echo "current_version=v0.0.0" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Determine target version
+        id: determine_version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            # Use manually specified version
+            TARGET_VERSION="${{ github.event.inputs.version }}"
+          else
+            # Use auto-detected next version
+            TARGET_VERSION="${{ steps.get_version.outputs.next_version }}"
+          fi
+          echo "target_version=$TARGET_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check for existing release PR
+        id: check_pr
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const targetVersion = '${{ steps.determine_version.outputs.target_version }}';
+
+            // Search for existing release PRs
+            const { data: pulls } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              head: `release-${targetVersion}`
+            });
+
+            if (pulls.length > 0) {
+              console.log(`Found existing release PR: #${pulls[0].number}`);
+              return {
+                exists: true,
+                branch: `release-${targetVersion}`,
+                number: pulls[0].number
+              };
+            } else {
+              console.log(`No existing release PR found for ${targetVersion}`);
+              return {
+                exists: false,
+                branch: `release-${targetVersion}`
+              };
+            }
+
+      - name: Create or update release branch
+        id: release_branch
+        run: |
+          RELEASE_BRANCH="${{ fromJSON(steps.check_pr.outputs.result).branch }}"
+          TARGET_VERSION="${{ steps.determine_version.outputs.target_version }}"
+          CURRENT_VERSION="${{ steps.get_version.outputs.current_version }}"
+
+          # If branch exists, make sure it's up to date
+          if git ls-remote --heads origin $RELEASE_BRANCH | grep -q $RELEASE_BRANCH; then
+            echo "Updating existing release branch: $RELEASE_BRANCH"
+            git fetch origin $RELEASE_BRANCH
+            git checkout $RELEASE_BRANCH
+            git pull origin $RELEASE_BRANCH
+            git merge --no-edit origin/main
+
+            # Push changes (this will update the PR automatically)
+            git push origin $RELEASE_BRANCH
+          else
+            echo "Creating new release branch: $RELEASE_BRANCH"
+            git checkout -b $RELEASE_BRANCH
+
+            # Create or update version file/changelog
+            echo "Preparing release $TARGET_VERSION"
+            echo "$TARGET_VERSION" > VERSION
+
+            # Update any version references in files here if needed
+            # For example:
+            # sed -i "s/version = \"$CURRENT_VERSION\"/version = \"$TARGET_VERSION\"/" your_version_file.txt
+
+            git add VERSION
+            git commit -m "chore: prepare release $TARGET_VERSION"
+            git push -u origin $RELEASE_BRANCH
+          fi
+
+      - name: Create PR if needed
+        if: fromJSON(steps.check_pr.outputs.result).exists == false
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const targetVersion = '${{ steps.determine_version.outputs.target_version }}';
+            const releaseBranch = '${{ fromJSON(steps.check_pr.outputs.result).branch }}';
+
+            // Get list of commits since last release
+            const { data: compareData } = await github.rest.repos.compareCommits({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              base: '${{ steps.get_version.outputs.current_version }}',
+              head: 'main'
+            });
+
+            // Format commits for PR description
+            const commits = compareData.commits.map(commit =>
+              `* ${commit.commit.message.split('\n')[0]} (${commit.sha.substring(0, 7)})`
+            ).join('\n');
+
+            // Create PR with commit list
+            const { data: pr } = await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Release ${targetVersion}`,
+              head: releaseBranch,
+              base: 'main',
+              body: `## What's Changed\nThis PR prepares release ${targetVersion}.\n\n### Commits\n${commits}\n\n_Note: Merging this PR will trigger the release workflow to create a GitHub Release with native and LLM-generated release notes._`
+            });
+
+            console.log(`Created PR #${pr.number}: ${pr.html_url}`);
+
+            // Add release label if you want to track release PRs
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              labels: ['release']
+            });
