@@ -1,5 +1,62 @@
 # Changelog
 
+## 3.9.1 (2025-11-07)
+
+## What's Changed
+* chore(deps): update pre-commit hook errata-ai/vale to v3.13.0 by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1625
+* chore(deps): update portkeyai/gateway docker tag to v1.13.0 by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1627
+* chore(deps): update helm release cloudnative-pg to v0.26.1 by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1628
+* chore(deps): update helm release cilium to v1.18.3 by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1629
+* chore(deps): update helm release argo-cd to v9.0.4 by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1630
+* chore(deps): update all dependencies (patch) by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1631
+* chore(deps): update all dependencies to v78.5.0 (minor) by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1632
+* chore(deps): update ghcr.io/home-assistant/home-assistant docker tag to v2025.10.4 by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1633
+* chore(deps): update helm release gpu-operator to v25.10.0 by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1635
+* chore(deps): update ghcr.io/berriai/litellm docker tag to v1.78.0 by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1637
+* chore(deps): update ghcr.io/berriai/litellm docker tag to v1.78.5 by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1638
+* chore(deps): update actions/upload-artifact action to v5 by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1634
+* chore(deps): update ghcr.io/jellyfin/jellyfin docker tag to v10.11.1 by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1639
+* chore(deps): update helm release redis to v23.2.2 by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1640
+* chore(deps): update helm release authentik to v2025.10.0 by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1641
+* chore(deps): update all dependencies (major) by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1642
+* chore(deps): update terraform proxmox to v0.86.0 by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1643
+* chore(deps): update node.js to v22.21.1 by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1645
+* chore(deps): update mongo docker tag to v8.2 by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1646
+* chore(deps): update all dependencies to v79.0.1 (patch) by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1647
+* chore(deps): update ghcr.io/immich-app/immich-server docker tag to v2.2.0 by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1648
+* chore(deps): update cloudflare/cloudflared docker tag to v2025.10.1 by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1649
+* chore(deps): update ghcr.io/immich-app/immich-machine-learning docker tag to v2.2.0 by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1650
+* chore(deps): update all dependencies to v2.2.1 (patch) by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1651
+* chore(deps): update all dependencies to v79.1.0 (minor) by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1652
+* chore(deps): update ghcr.io/berriai/litellm docker tag to v1.79.0 by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1653
+* chore(deps): update koenkk/zigbee2mqtt docker tag to v2.6.3 by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1654
+* chore(deps): update helm release redis to v23.2.3 by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1655
+* chore(deps): update node.js to v24 by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1644
+* chore(deps): update all dependencies to v79.1.1 (patch) by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1656
+* chore(deps): update ghcr.io/jellyfin/jellyfin docker tag to v10.11.2 by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1657
+* chore(deps): update all dependencies to v2.2.2 (patch) by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1658
+* chore(deps): update all dependencies (patch) by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1659
+* chore(deps): update helm release argo-cd to v9.0.6 by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1660
+* chore(deps): update helm release redis to v23.2.5 by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1661
+* chore(deps): update helm release argo-cd to v9.1.0 by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1662
+* chore(deps): update helm release node-feature-discovery to v0.18.3 by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1664
+* chore(deps): update all dependencies to v2.2.3 (patch) by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1665
+* chore(deps): update helm release redis to v23.2.6 by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1666
+* chore(deps): update ghcr.io/home-assistant/home-assistant docker tag to v2025.11.0 by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1667
+* chore(deps): update all dependencies (minor) by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1668
+* chore(deps): update all dependencies to v79.2.1 (patch) by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1669
+* Chore(deps)--update-bytebot-agent-and-desktop-services,-adjust-HTTP-routes-and-ports by @theepicsaxguy in https://github.com/theepicsaxguy/homelab/pull/1670
+* fix(unifi): pin controller image to v9.2.87 by @theepicsaxguy in https://github.com/theepicsaxguy/homelab/pull/1672
+* chore(deps): update all dependencies (minor) by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1671
+* chore(deps): update all dependencies (patch) by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1673
+* chore(deps): update velero/velero-plugin-for-aws docker tag to v1.13.1 by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1674
+* chore(deps): update helm release redis to v23.2.11 by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1676
+* chore(deps): update all dependencies (minor) by @renovate[bot] in https://github.com/theepicsaxguy/homelab/pull/1677
+* refactor: remove omada application by @theepicsaxguy in https://github.com/theepicsaxguy/homelab/pull/1675
+
+
+**Full Changelog**: https://github.com/theepicsaxguy/homelab/compare/v3.9.0...v3.9.1
+
 ## 3.9.0 (2025-10-21)
 
 ## What's Changed
